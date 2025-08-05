@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: memquorum
+  labels:
+    name: memquorum
+    app: memquorum-system

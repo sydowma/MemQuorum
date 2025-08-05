@@ -1,0 +1,161 @@
+version: '3.8'
+
+services:
+  # Nacos 注册中心 (Derby 独立模式)
+  nacos-server:
+    image: nacos/nacos-server:latest
+    container_name: nacos-server
+    environment:
+      - PREFER_HOST_MODE=hostname
+      - MODE=standalone
+      - NACOS_AUTH_TOKEN=eW91cl9uYWNvc19zZWNyZXRfa2V5X211c3RfYmVfYXRfbGVhc3RfMzJfYnl0ZXNfbG9uZ19mb3Jfc2VjdXJpdHk=
+      - NACOS_AUTH_IDENTITY_KEY=Authorization
+      - NACOS_AUTH_IDENTITY_VALUE=token
+      - NACOS_AUTH_ENABLE=false
+    ports:
+      - "8080:8080"
+      - "8848:8848"
+      - "9848:9848"
+    restart: unless-stopped
+    networks:
+      - memquorum-network
+
+  # MemQuorum 节点1
+  memquorum-node1:
+    build: .
+    container_name: memquorum-node1
+    environment:
+      - NODE_ID=node1
+      - SERVER_PORT=8080
+      - GRPC_PORT=9090
+      - NACOS_SERVER_ADDR=nacos-server:8848
+      - CLUSTER_NODES=node1,node2,node3
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    ports:
+      - "8081:8080"
+      - "9091:9090"
+    depends_on:
+      - nacos-server
+    restart: unless-stopped
+    networks:
+      - memquorum-network
+    volumes:
+      # Mount data directory from current directory
+      - ./data/node1:/app/data
+      # Mount logs directory from current directory
+      - ./logs/node1:/app/logs
+
+  # MemQuorum 节点2
+  memquorum-node2:
+    build: .
+    container_name: memquorum-node2
+    environment:
+      - NODE_ID=node2
+      - SERVER_PORT=8080
+      - GRPC_PORT=9090
+      - NACOS_SERVER_ADDR=nacos-server:8848
+      - CLUSTER_NODES=node1,node2,node3
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    ports:
+      - "8082:8080"
+      - "9092:9090"
+    depends_on:
+      - nacos-server
+    restart: unless-stopped
+    networks:
+      - memquorum-network
+    volumes:
+      # Mount data directory from current directory
+      - ./data/node2:/app/data
+      # Mount logs directory from current directory
+      - ./logs/node2:/app/logs
+
+  # MemQuorum 节点3
+  memquorum-node3:
+    build: .
+    container_name: memquorum-node3
+    environment:
+      - NODE_ID=node3
+      - SERVER_PORT=8080
+      - GRPC_PORT=9090
+      - NACOS_SERVER_ADDR=nacos-server:8848
+      - CLUSTER_NODES=node1,node2,node3
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    ports:
+      - "8083:8080"
+      - "9093:9090"
+    depends_on:
+      - nacos-server
+    restart: unless-stopped
+    networks:
+      - memquorum-network
+    volumes:
+      # Mount data directory from current directory
+      - ./data/node3:/app/data
+      # Mount logs directory from current directory
+      - ./logs/node3:/app/logs
+
+  # Prometheus 监控
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      # Mount Prometheus configuration from current directory
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Mount persistent data volume
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - memquorum-network
+
+  # Grafana 可视化
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      # Mount persistent data volume
+      - grafana-data:/var/lib/grafana
+      # Mount dashboard configuration from current directory
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      # Mount datasource configuration from current directory  
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - memquorum-network
+
+networks:
+  memquorum-network:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+# Files and directories mounted from current directory:
+# Configuration files:
+# - ./config/prometheus.yml -> /etc/prometheus/prometheus.yml (Prometheus config)
+# - ./config/grafana/dashboards -> /etc/grafana/provisioning/dashboards (Grafana dashboards)
+# - ./config/grafana/datasources -> /etc/grafana/provisioning/datasources (Grafana datasources)
+# 
+# MemQuorum data and logs:
+# - ./data/node1 -> /app/data (Node1 data directory)
+# - ./logs/node1 -> /app/logs (Node1 logs directory)
+# - ./data/node2 -> /app/data (Node2 data directory)
+# - ./logs/node2 -> /app/logs (Node2 logs directory)
+# - ./data/node3 -> /app/data (Node3 data directory)
+# - ./logs/node3 -> /app/logs (Node3 logs directory)

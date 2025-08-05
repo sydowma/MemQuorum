@@ -1,0 +1,48 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # Prometheus自身的监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # MemQuorum节点监控
+  - job_name: 'memquorum'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: 
+        - 'memquorum-node1:8080'
+        - 'memquorum-node2:8080'
+        - 'memquorum-node3:8080'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Nacos监控
+  - job_name: 'nacos'
+    metrics_path: '/nacos/actuator/prometheus'
+    static_configs:
+      - targets: ['nacos-server:8848']
+    scrape_interval: 30s
+
+  # MySQL监控（如果启用了mysql_exporter）
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['nacos-mysql:3306']
+    scrape_interval: 30s
+
+# 告警规则配置（可选）
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+# 记录规则（可选）
+# rule_files:
+#   - "memquorum_rules.yml"

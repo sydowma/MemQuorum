@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: memquorum-config
+  namespace: memquorum
+data:
+  application.properties: |
+    # Spring Boot配置
+    spring.application.name=MemQuorum
+    server.port=8080
+    management.endpoints.web.exposure.include=health,info,metrics,prometheus
+    management.endpoint.health.show-details=always
+    
+    # 日志配置
+    logging.level.com.github.sydowma.memquorum=INFO
+    logging.pattern.console=%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n
+    
+    # gRPC配置
+    grpc.server.port=9090
+    grpc.server.max-message-size=4194304
+    
+    # Raft配置
+    raft.election-timeout-min=150
+    raft.election-timeout-max=300
+    raft.heartbeat-interval=50
+    raft.max-log-entries-per-request=100
+    
+    # 性能调优
+    raft.async-replication=true
+    raft.batch-append=true
+    raft.compress-snapshot=true
+  
+  nacos-config.properties: |
+    # Nacos配置
+    nacos.server.addr=${NACOS_SERVER_ADDR:nacos-server:8848}
+    nacos.namespace=public
+    nacos.group=DEFAULT_GROUP
+    nacos.service.name=memquorum-cluster
+    nacos.cluster.name=default
+    
+    # 注册配置
+    nacos.register.instance.enabled=true
+    nacos.register.instance.ip=${POD_IP}
+    nacos.register.instance.port=${GRPC_PORT:9090}
+    nacos.register.instance.weight=1.0
+    nacos.register.instance.healthy=true
+    nacos.register.instance.enabled=true
+    nacos.register.instance.ephemeral=true
+    
+    # 配置中心
+    nacos.config.enabled=true
+    nacos.config.refresh=true
+    nacos.config.data-id=memquorum-config
+    nacos.config.group=DEFAULT_GROUP
+    nacos.config.type=properties

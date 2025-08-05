@@ -1,0 +1,116 @@
+# ServiceMonitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: memquorum-metrics
+  namespace: memquorum
+  labels:
+    app: memquorum
+spec:
+  selector:
+    matchLabels:
+      app: memquorum
+  endpoints:
+  - port: http
+    path: /actuator/prometheus
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# PrometheusRule for alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: memquorum-alerts
+  namespace: memquorum
+  labels:
+    app: memquorum
+spec:
+  groups:
+  - name: memquorum.rules
+    rules:
+    - alert: MemQuorumNodeDown
+      expr: up{job="memquorum"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "MemQuorum node is down"
+        description: "MemQuorum node {{ $labels.instance }} has been down for more than 1 minute."
+    
+    - alert: MemQuorumHighMemoryUsage
+      expr: (jvm_memory_used_bytes{job="memquorum"} / jvm_memory_max_bytes{job="memquorum"}) > 0.9
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "MemQuorum high memory usage"
+        description: "MemQuorum node {{ $labels.instance }} memory usage is above 90% for more than 5 minutes."
+    
+    - alert: MemQuorumHighCPUUsage
+      expr: rate(process_cpu_seconds_total{job="memquorum"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "MemQuorum high CPU usage"
+        description: "MemQuorum node {{ $labels.instance }} CPU usage is above 80% for more than 5 minutes."
+    
+    - alert: MemQuorumLeaderElectionFailure
+      expr: increase(memquorum_raft_leader_elections_total[5m]) > 3
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Frequent leader elections in MemQuorum cluster"
+        description: "MemQuorum cluster has had more than 3 leader elections in the last 5 minutes."
+    
+    - alert: MemQuorumClusterSplitBrain
+      expr: count(memquorum_raft_state{state="leader"}) > 1
+      for: 30s
+      labels:
+        severity: critical
+      annotations:
+        summary: "Multiple leaders detected in MemQuorum cluster"
+        description: "MemQuorum cluster has multiple leaders, indicating a split-brain scenario."
+
+---
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: memquorum-hpa
+  namespace: memquorum
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: memquorum
+  minReplicas: 3
+  maxReplicas: 9
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
