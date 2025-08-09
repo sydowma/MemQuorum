@@ -13,26 +13,50 @@ services:
       - NACOS_AUTH_IDENTITY_VALUE=token
       - NACOS_AUTH_ENABLE=false
     ports:
-      - "8080:8080"
       - "8848:8848"
       - "9848:9848"
     restart: unless-stopped
     networks:
       - memquorum-network
 
-  # MemQuorum 节点1
-  memquorum-node1:
-    build: .
-    container_name: memquorum-node1
+  # API Gateway Service
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+      # Enable BuildKit for cache mount optimization
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    container_name: memquorum-api-gateway
     environment:
-      - NODE_ID=node1
-      - SERVER_PORT=8080
-      - GRPC_PORT=9090
       - NACOS_SERVER_ADDR=nacos-server:8848
-      - CLUSTER_NODES=node1,node2,node3
+      - MEMQUORUM_ENGINE_TOTAL_SHARDS=16
+      - JAVA_OPTS=-Xmx256m -Xms128m
+    ports:
+      - "8080:8080"
+    depends_on:
+      - nacos-server
+    restart: unless-stopped
+    networks:
+      - memquorum-network
+
+  # MemQuorum Engine 节点1
+  engine-node1:
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
+      # Enable BuildKit for cache mount optimization
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    container_name: memquorum-engine-node1
+    environment:
+      - MEMQUORUM_NODE_ID=engine-node1
+      - MEMQUORUM_NODE_PORT=9090
+      - NACOS_SERVER_ADDR=nacos-server:8848
+      - MEMQUORUM_SHARDS_TOTAL=16
+      - MEMQUORUM_REPLICATION_FACTOR=3
       - JAVA_OPTS=-Xmx512m -Xms256m
     ports:
-      - "8081:8080"
       - "9091:9090"
     depends_on:
       - nacos-server
@@ -45,19 +69,24 @@ services:
       # Mount logs directory from current directory
       - ./logs/node1:/app/logs
 
-  # MemQuorum 节点2
-  memquorum-node2:
-    build: .
-    container_name: memquorum-node2
+  # MemQuorum Engine 节点2
+  engine-node2:
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
+      # Enable BuildKit for cache mount optimization
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    container_name: memquorum-engine-node2
     environment:
-      - NODE_ID=node2
-      - SERVER_PORT=8080
-      - GRPC_PORT=9090
+      - MEMQUORUM_NODE_ID=engine-node2
+      - MEMQUORUM_NODE_PORT=9090
       - NACOS_SERVER_ADDR=nacos-server:8848
-      - CLUSTER_NODES=node1,node2,node3
+      - MEMQUORUM_SHARDS_TOTAL=16
+      - MEMQUORUM_REPLICATION_FACTOR=3
       - JAVA_OPTS=-Xmx512m -Xms256m
+      - MEMQUORUM_STARTUP_DELAY=10
     ports:
-      - "8082:8080"
       - "9092:9090"
     depends_on:
       - nacos-server
@@ -70,19 +99,24 @@ services:
       # Mount logs directory from current directory
       - ./logs/node2:/app/logs
 
-  # MemQuorum 节点3
-  memquorum-node3:
-    build: .
-    container_name: memquorum-node3
+  # MemQuorum Engine 节点3
+  engine-node3:
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
+      # Enable BuildKit for cache mount optimization
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    container_name: memquorum-engine-node3
     environment:
-      - NODE_ID=node3
-      - SERVER_PORT=8080
-      - GRPC_PORT=9090
+      - MEMQUORUM_NODE_ID=engine-node3
+      - MEMQUORUM_NODE_PORT=9090
       - NACOS_SERVER_ADDR=nacos-server:8848
-      - CLUSTER_NODES=node1,node2,node3
+      - MEMQUORUM_SHARDS_TOTAL=16
+      - MEMQUORUM_REPLICATION_FACTOR=3
       - JAVA_OPTS=-Xmx512m -Xms256m
+      - MEMQUORUM_STARTUP_DELAY=20
     ports:
-      - "8083:8080"
       - "9093:9090"
     depends_on:
       - nacos-server
@@ -152,10 +186,17 @@ volumes:
 # - ./config/grafana/dashboards -> /etc/grafana/provisioning/dashboards (Grafana dashboards)
 # - ./config/grafana/datasources -> /etc/grafana/provisioning/datasources (Grafana datasources)
 # 
-# MemQuorum data and logs:
-# - ./data/node1 -> /app/data (Node1 data directory)
-# - ./logs/node1 -> /app/logs (Node1 logs directory)
-# - ./data/node2 -> /app/data (Node2 data directory)
-# - ./logs/node2 -> /app/logs (Node2 logs directory)
-# - ./data/node3 -> /app/data (Node3 data directory)
-# - ./logs/node3 -> /app/logs (Node3 logs directory)
+# Engine service data and logs:
+# - ./data/node1 -> /app/data (Engine node1 data directory)
+# - ./logs/node1 -> /app/logs (Engine node1 logs directory)
+# - ./data/node2 -> /app/data (Engine node2 data directory)
+# - ./logs/node2 -> /app/logs (Engine node2 logs directory)
+# - ./data/node3 -> /app/data (Engine node3 data directory)
+# - ./logs/node3 -> /app/logs (Engine node3 logs directory)
+#
+# Services:
+# - api-gateway: HTTP API Gateway (Port 8080)
+# - engine-node1/2/3: Engine services with gRPC (Ports 9091/9092/9093)
+# - nacos-server: Service registry (Port 8848)
+# - prometheus: Monitoring (Port 9090)
+# - grafana: Visualization (Port 3000)

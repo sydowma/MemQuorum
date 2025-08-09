@@ -1,0 +1,174 @@
+syntax = "proto3";
+
+package com.github.sydowma.memquorum;
+
+option java_package = "com.github.sydowma.memquorum.grpc";
+option java_multiple_files = true;
+
+message Entry {
+  string key = 1;
+  bytes value = 2;
+  int64 timestamp = 3;
+}
+
+message ProduceRequest {
+  string topic = 1;
+  int32 partition = 2;
+  Entry entry = 3;
+}
+
+message ProduceResponse {
+  int64 offset = 1;
+}
+
+message ReadRequest {
+  string topic = 1;
+  int32 partition = 2;
+  int64 offset = 3;
+  int32 count = 4;
+}
+
+message ReadResponse {
+  repeated Entry entries = 1;
+}
+
+message SyncRequest {
+  Entry entry = 1;
+  int64 offset = 2;
+}
+
+message SyncResponse {
+  bool success = 1;
+}
+
+message SubscribeRequest {
+  string topic = 1;
+  string groupId = 2;
+  int32 partition = 3;
+}
+
+// Raft consensus messages
+message RequestVoteRequest {
+  int64 term = 1;
+  string candidateId = 2;
+  int64 lastLogIndex = 3;
+  int64 lastLogTerm = 4;
+}
+
+message RequestVoteResponse {
+  int64 term = 1;
+  bool voteGranted = 2;
+}
+
+message AppendEntriesRequest {
+  int64 term = 1;
+  string leaderId = 2;
+  int64 prevLogIndex = 3;
+  int64 prevLogTerm = 4;
+  repeated LogEntry entries = 5;
+  int64 leaderCommit = 6;
+}
+
+message AppendEntriesResponse {
+  int64 term = 1;
+  bool success = 2;
+}
+
+message LogEntry {
+  int64 term = 1;
+  int64 index = 2;
+  bytes data = 3;
+}
+
+// Health check and status
+message HealthCheckRequest {
+  string nodeId = 1;
+}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string status = 2;
+  int64 timestamp = 3;
+}
+
+message ClusterStatusRequest {
+  string nodeId = 1;
+}
+
+message ClusterStatusResponse {
+  repeated NodeStatus nodes = 1;
+  int32 totalShards = 2;
+  string leaderId = 3;
+}
+
+message NodeStatus {
+  string nodeId = 1;
+  string address = 2;
+  string role = 3;
+  bool healthy = 4;
+  repeated int32 shards = 5;
+}
+
+service PartitionService {
+  rpc Produce(ProduceRequest) returns (ProduceResponse);
+  rpc Read(ReadRequest) returns (ReadResponse);
+  rpc Sync(SyncRequest) returns (SyncResponse);
+  rpc Subscribe(SubscribeRequest) returns (stream Entry);  // Push模式流式
+}
+
+service RaftService {
+  rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse);
+  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse);
+}
+
+service ClusterService {
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc GetClusterStatus(ClusterStatusRequest) returns (ClusterStatusResponse);
+}
+
+// Key-Value Storage Messages
+message SetRequest {
+  string userId = 1;
+  string key = 2;
+  string value = 3;
+}
+
+message SetResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetRequest {
+  string userId = 1;
+  string key = 2;
+}
+
+message GetResponse {
+  bool found = 1;
+  string value = 2;
+}
+
+message DeleteRequest {
+  string userId = 1;
+  string key = 2;
+}
+
+message DeleteResponse {
+  bool success = 1;
+}
+
+message ListRequest {
+  string userId = 1;
+  string pattern = 2;
+}
+
+message ListResponse {
+  repeated string keys = 1;
+}
+
+service MemQuorumService {
+  rpc Set(SetRequest) returns (SetResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc List(ListRequest) returns (ListResponse);
+}

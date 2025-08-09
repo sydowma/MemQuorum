@@ -1,37 +1,63 @@
 # MemQuorum - 分布式内存服务
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/your-repo/memquorum)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/sydowma/MemQuorum)
 [![Java Version](https://img.shields.io/badge/java-21-blue)](https://openjdk.java.net/projects/jdk/21/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-MemQuorum 是一个基于 Java 21 和 Raft 协议的高性能分布式内存服务，提供强一致性的键值存储能力。
+MemQuorum 是一个基于 Java 21 和 Raft 协议的高性能分布式内存服务，提供强一致性的键值存储能力，支持用户分片和多副本存储。
 
 ## 🚀 核心特性
 
-- **强一致性**: 基于 Raft 协议实现的分布式共识
-- **高可用性**: 支持多节点部署，自动故障转移
-- **服务发现**: 集成 Nacos 注册中心，支持动态服务发现
-- **高性能**: 基于 gRPC 的高效节点间通信
-- **易用性**: 提供简洁的 Java 客户端 SDK
-- **可观测性**: 完整的监控指标和分布式链路追踪
+- **强一致性**: 基于 Raft 协议实现的分布式共识算法
+- **用户分片**: 基于用户ID的一致性哈希分片，支持水平扩展
+- **多副本存储**: 可配置的副本因子，确保数据高可用性
+- **服务发现**: 集成 Nacos 注册中心，支持动态服务发现和配置管理
+- **高性能通信**: 基于 gRPC 的高效节点间通信和客户端接口
+- **微服务架构**: API网关 + 引擎节点分离，支持独立扩缩容
+- **可观测性**: 集成 Prometheus + Grafana 监控栈
 - **云原生**: 支持 Docker 容器化和 Kubernetes 部署
+- **流式输入**: 可选的 Kafka 集成，支持流式数据写入
 
 ## 🏗️ 架构概览
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   MemQuorum     │    │   MemQuorum     │    │   MemQuorum     │
-│   Node 1        │◄──►│   Node 2        │◄──►│   Node 3        │
-│   (Leader)      │    │   (Follower)    │    │   (Follower)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────┐
-                    │  Nacos Registry │
-                    │  Configuration  │
-                    └─────────────────┘
+                           ┌─────────────────┐
+                           │   API Gateway   │
+                           │   (Port: 8080)  │
+                           └─────────┬───────┘
+                                     │ gRPC calls
+                           ┌─────────┴───────┐
+                           │                 │
+    ┌─────────────────┐    │                 │    ┌─────────────────┐
+    │   Engine Node 1 │◄───┼─────────────────┼───►│   Engine Node 3 │
+    │   (Port: 9091)  │    │                 │    │   (Port: 9093)  │
+    │   Shard 0,3,6.. │    │                 │    │   Shard 2,5,8.. │
+    └─────────┬───────┘    │                 │    └─────────┬───────┘
+              │            │                 │              │
+              │            │                 │              │
+              │     ┌─────────────────┐      │              │
+              │     │   Engine Node 2 │      │              │
+              │     │   (Port: 9092)  │      │              │
+              │     │   Shard 1,4,7.. │      │              │
+              │     └─────────┬───────┘      │              │
+              │               │              │              │
+              └───────────────┼──────────────┼──────────────┘
+                              │    Raft      │
+                              │  Consensus   │
+                              │              │
+               ┌──────────────┴──────────────┴──────────────┐
+               │                                            │
+    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+    │      Nacos      │    │   Prometheus    │    │     Grafana     │
+    │  (Port: 8848)   │    │   (Port: 9090)  │    │   (Port: 3000)  │
+    │ Service Registry│    │   Monitoring    │    │   Dashboard     │
+    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
+
+## TODO 
+
+- SNAPSHOT
+- restart & deploy testing
 
 ## 📦 快速开始
 
@@ -88,15 +114,59 @@ MemQuorum 是一个基于 Java 21 和 Raft 协议的高性能分布式内存服�
 ### Docker Compose 部署
 
 ```bash
-# 启动完整集群
+# 启动完整集群 (API网关 + 3个引擎节点 + Nacos + 监控)
 docker-compose up -d
 
 # 查看服务状态
 docker-compose ps
 
-# 查看日志
-docker-compose logs -f memquorum-node1
+# 查看引擎节点日志
+docker-compose logs -f engine-node1
+docker-compose logs -f engine-node2
+docker-compose logs -f engine-node3
+
+# 查看API网关日志
+docker-compose logs -f api-gateway
+
+# 查看Nacos日志
+docker-compose logs -f nacos-server
+
+# 重新构建并启动
+docker-compose up -d --build
+
+# 停止服务
+docker-compose down
 ```
+
+### 访问服务
+
+```bash
+# API测试
+curl -X POST "http://localhost:8080/api/v1/memory/set" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "test", "key": "hello", "value": "world"}'
+
+# Nacos控制台 (服务注册发现)
+open http://localhost:8848/nacos
+
+# Grafana监控面板 (admin/admin123)
+open http://localhost:3000
+
+# Prometheus指标
+open http://localhost:9090
+```
+
+### 服务端口说明
+
+| 服务 | 端口 | 描述 |
+|------|------|------|
+| API Gateway | 8080 | HTTP REST API |
+| Engine Node 1 | 9091 | gRPC服务 |
+| Engine Node 2 | 9092 | gRPC服务 |  
+| Engine Node 3 | 9093 | gRPC服务 |
+| Nacos Console | 8848 | 服务注册发现 |
+| Prometheus | 9090 | 监控指标收集 |
+| Grafana | 3000 | 监控面板 |
 
 ### Kubernetes 部署
 
@@ -160,69 +230,113 @@ try (MemQuorumClient client = new MemQuorumClient(config)) {
 ### REST API
 
 ```bash
-# PUT 操作
-curl -X POST "http://localhost:8081/api/v1/kv/user:123" \
+# SET 操作 - 存储用户数据
+curl -X POST "http://localhost:8080/api/v1/memory/set" \
   -H "Content-Type: application/json" \
-  -d '{"value": "John Doe"}'
+  -d '{"userId": "user123", "key": "profile", "value": "John Doe"}'
 
-# GET 操作
-curl "http://localhost:8081/api/v1/kv/user:123"
+# GET 操作 - 获取用户数据
+curl -X POST "http://localhost:8080/api/v1/memory/get" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "user123", "key": "profile"}'
 
-# DELETE 操作
-curl -X DELETE "http://localhost:8081/api/v1/kv/user:123"
+# DELETE 操作 - 删除用户数据
+curl -X POST "http://localhost:8080/api/v1/memory/delete" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "user123", "key": "profile"}'
 
-# 集群状态
-curl "http://localhost:8081/api/v1/cluster/status"
+# LIST 操作 - 列出用户的所有键
+curl -X POST "http://localhost:8080/api/v1/memory/list" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "user123", "pattern": "*"}'
+
+# 健康检查
+curl "http://localhost:8080/api/v1/memory/health"
+
+# 获取分片信息
+curl "http://localhost:8080/api/v1/memory/shards"
 ```
 
 ## 🔧 配置说明
 
-### 应用配置 (application.properties)
+### 引擎节点配置 (engine/application.properties)
 
 ```properties
+# 应用名称
+spring.application.name=memquorum-engine
+
+# 节点配置
+memquorum.node.port=9090
+memquorum.node.id=${MEMQUORUM_NODE_ID:}
+memquorum.startup.delay=${MEMQUORUM_STARTUP_DELAY:0}
+
+# 分片配置
+memquorum.shards.total=${MEMQUORUM_SHARDS_TOTAL:16}
+memquorum.replication.factor=${MEMQUORUM_REPLICATION_FACTOR:3}
+
+# Nacos配置
+nacos.server.addr=${NACOS_SERVER_ADDR:nacos-server:8848}
+
+# Kafka配置 (可选)
+memquorum.kafka.enabled=${MEMQUORUM_KAFKA_ENABLED:false}
+memquorum.kafka.bootstrap-servers=${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+# 监控配置
+server.port=8081
+management.server.port=8081
+management.endpoints.web.exposure.include=health,info,metrics
+
+# 日志配置
+logging.level.com.github.sydowma.engine=INFO
+logging.level.com.github.sydowma.engine.raft=DEBUG
+```
+
+### API网关配置 (api/application.properties)
+
+```properties
+# 应用名称
+spring.application.name=memquorum-api
+
 # 服务器配置
 server.port=8080
-grpc.server.port=9090
 
-# Nacos 配置
-nacos.server.addr=127.0.0.1:8848
-nacos.service.name=memquorum-cluster
+# Nacos配置
+nacos.server.addr=${NACOS_SERVER_ADDR:nacos-server:8848}
 
-# Raft 配置
-raft.election-timeout-min=150
-raft.election-timeout-max=300
-raft.heartbeat-interval=50
-
-# 性能调优
-raft.async-replication=true
-raft.batch-append=true
-raft.max-log-entries-per-request=100
+# 引擎集群配置
+memquorum.engine.total-shards=${MEMQUORUM_ENGINE_TOTAL_SHARDS:16}
 ```
 
 ### 环境变量
 
-| 变量名 | 描述 | 默认值 |
-|--------|------|--------|
-| `NODE_ID` | 节点唯一标识 | 自动生成 |
-| `SERVER_PORT` | HTTP 服务端口 | 8080 |
-| `GRPC_PORT` | gRPC 服务端口 | 9090 |
-| `NACOS_SERVER_ADDR` | Nacos 服务地址 | 127.0.0.1:8848 |
-| `CLUSTER_NODES` | 集群节点列表 | - |
-| `JAVA_OPTS` | JVM 参数 | -Xmx1g -Xms512m |
+| 变量名 | 描述 | 默认值 | 服务 |
+|--------|------|--------|------|
+| `MEMQUORUM_NODE_ID` | 引擎节点唯一标识 | 自动生成 | Engine |
+| `MEMQUORUM_NODE_PORT` | 引擎节点gRPC端口 | 9090 | Engine |
+| `MEMQUORUM_STARTUP_DELAY` | 启动延迟(秒) | 0 | Engine |
+| `MEMQUORUM_SHARDS_TOTAL` | 总分片数 | 16 | Engine |
+| `MEMQUORUM_REPLICATION_FACTOR` | 副本因子 | 3 | Engine |
+| `NACOS_SERVER_ADDR` | Nacos服务地址 | nacos-server:8848 | Both |
+| `MEMQUORUM_KAFKA_ENABLED` | 启用Kafka | false | Engine |
+| `KAFKA_BOOTSTRAP_SERVERS` | Kafka地址 | localhost:9092 | Engine |
+| `JAVA_OPTS` | JVM参数 | -Xmx512m -Xms256m | Both |
 
 ## 📊 监控与运维
 
 ### 健康检查
 
 ```bash
-# 应用健康状态
-curl http://localhost:8080/actuator/health
+# API网关健康状态
+curl http://localhost:8080/api/v1/memory/health
 
-# 就绪状态
-curl http://localhost:8080/actuator/health/readiness
+# 引擎节点健康状态
+curl http://localhost:8081/actuator/health  # 引擎节点管理端口
 
-# 存活状态
-curl http://localhost:8080/actuator/health/liveness
+# 集群分片状态
+curl http://localhost:8080/api/v1/memory/shards
+
+# Nacos控制台 
+# 浏览器访问: http://localhost:8848/nacos
 ```
 
 ### 指标监控
@@ -318,6 +432,6 @@ curl -X POST "http://localhost:8080/actuator/loggers/com.github.sydowma.memquoru
 
 ## 📞 联系我们
 
-- 📧 Email: your-email@example.com
-- 💬 Issues: [GitHub Issues](https://github.com/your-repo/memquorum/issues)
-- 📖 文档: [Wiki](https://github.com/your-repo/memquorum/wiki)
+- 💬 Issues: [GitHub Issues](https://github.com/sydowma/MemQuorum/issues)
+- 📖 文档: [Wiki](https://github.com/sydowma/MemQuorum/wiki)
+- 🚀 项目主页: [MemQuorum](https://github.com/sydowma/MemQuorum)
